@@ -298,8 +298,8 @@ export default function App() {
    */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Secret shortcut 's' or 'a' toggles auto-complete
-      if (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'a') {
+      // Secret shortcut: '`' (backtick) or 'p' also toggles auto-complete
+      if (e.key === '`' || e.key.toLowerCase() === 'p') {
         if (!e.metaKey && !e.ctrlKey) {
           toggleAutoPilot();
           return;
@@ -323,11 +323,11 @@ export default function App() {
         return;
       }
 
-      // Direction keys
+      // Direction keys (Arrows and WASD)
       let newDir: Direction | null = null;
       if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') newDir = 'UP';
-      else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's' && e.key !== 's') newDir = 'DOWN';
-      else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a' && e.key !== 'a') newDir = 'LEFT';
+      else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') newDir = 'DOWN';
+      else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') newDir = 'LEFT';
       else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') newDir = 'RIGHT';
 
       if (newDir) {
