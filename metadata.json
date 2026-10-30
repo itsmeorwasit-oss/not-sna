@@ -1,0 +1,7 @@
+{
+  "name": "Google Snake Game",
+  "description": "An authentic Google Snake game clone with authentic visuals, sound effects, custom themes, and a secret randomized auto-complete AI solver.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
