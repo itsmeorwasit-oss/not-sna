@@ -166,7 +166,7 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
         drawGoogleFruit(ctx, food.x * cellSize, food.y * cellSize, cellSize, curFruit, pulse);
       }
 
-      // 4. Smooth Sub-Pixel Snake Interpolation
+      // 4. Smooth Spine Interpolation (Exact Google Snake curve mechanics)
       let progress = 1;
       if (curStatus === 'PLAYING') {
         const elapsed = performance.now() - tickTime;
@@ -174,18 +174,52 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
       }
 
       if (currentSnake.length > 0) {
-        const interpSnake: { x: number; y: number }[] = [];
-        for (let i = 0; i < currentSnake.length; i++) {
-          const curr = currentSnake[i];
-          const prev = previousSnake[i] || curr;
-          const ix = prev.x + (curr.x - prev.x) * progress;
-          const iy = prev.y + (curr.y - prev.y) * progress;
-          interpSnake.push({ x: ix, y: iy });
+        const spinePoints: { x: number; y: number }[] = [];
+        const currHead = currentSnake[0];
+        const prevHead = previousSnake[0] || currHead;
+
+        // Head tip advances along direction from prevHead to currHead
+        const headPixelX = (prevHead.x + (currHead.x - prevHead.x) * progress + 0.5) * cellSize;
+        const headPixelY = (prevHead.y + (currHead.y - prevHead.y) * progress + 0.5) * cellSize;
+        spinePoints.push({ x: headPixelX, y: headPixelY });
+
+        // Intermediate body vertices (these stay anchored at grid centers so corners never cut diagonally)
+        for (let i = 1; i < currentSnake.length; i++) {
+          spinePoints.push({
+            x: (currentSnake[i].x + 0.5) * cellSize,
+            y: (currentSnake[i].y + 0.5) * cellSize,
+          });
+        }
+
+        // Tail tip retracts from prevTail towards currTail if not growing
+        const didGrow = currentSnake.length > previousSnake.length;
+        if (!didGrow && previousSnake.length > 0) {
+          const currTail = currentSnake[currentSnake.length - 1];
+          const prevTail = previousSnake[previousSnake.length - 1];
+          const tailPixelX = (prevTail.x + (currTail.x - prevTail.x) * progress + 0.5) * cellSize;
+          const tailPixelY = (prevTail.y + (currTail.y - prevTail.y) * progress + 0.5) * cellSize;
+          spinePoints.push({ x: tailPixelX, y: tailPixelY });
+        }
+
+        // Filter out coincident or redundant consecutive points (< 0.6px apart)
+        const cleanPoints: { x: number; y: number }[] = [];
+        for (const pt of spinePoints) {
+          if (cleanPoints.length === 0) {
+            cleanPoints.push(pt);
+          } else {
+            const lastPt = cleanPoints[cleanPoints.length - 1];
+            const distSq = (pt.x - lastPt.x) ** 2 + (pt.y - lastPt.y) ** 2;
+            if (distSq > 0.36) {
+              cleanPoints.push(pt);
+            }
+          }
         }
 
         drawGoogleSnakeWithBigEyes(
           ctx,
-          interpSnake,
+          cleanPoints,
+          headPixelX,
+          headPixelY,
           curDir,
           pastDir,
           progress,
@@ -313,7 +347,9 @@ function drawGoogleFruit(
  */
 function drawGoogleSnakeWithBigEyes(
   ctx: CanvasRenderingContext2D,
-  interpSnake: { x: number; y: number }[],
+  points: { x: number; y: number }[],
+  hx: number,
+  hy: number,
   direction: Direction,
   prevDirection: Direction,
   progress: number,
@@ -322,63 +358,46 @@ function drawGoogleSnakeWithBigEyes(
   status: GameStatus,
   timestamp: number
 ) {
-  if (interpSnake.length === 0) return;
+  if (points.length === 0) return;
 
   const theme = SNAKE_THEMES[snakeColor];
   const snakeThickness = cellSize * 0.78; // Authentic ribbon thickness
-
-  ctx.save();
-
-  // 1. Subtle drop shadow under snake
-  ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.16)';
-  ctx.shadowBlur = 4;
-  ctx.shadowOffsetY = 2;
-
-  ctx.beginPath();
-  const first = interpSnake[0];
-  ctx.moveTo(first.x * cellSize + cellSize / 2, first.y * cellSize + cellSize / 2);
-  for (let i = 1; i < interpSnake.length; i++) {
-    const pt = interpSnake[i];
-    ctx.lineTo(pt.x * cellSize + cellSize / 2, pt.y * cellSize + cellSize / 2);
-  }
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = snakeThickness;
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)';
-  ctx.stroke();
-  ctx.restore();
-
-  // 2. Draw continuous body tube
-  ctx.beginPath();
-  ctx.moveTo(first.x * cellSize + cellSize / 2, first.y * cellSize + cellSize / 2);
-  for (let i = 1; i < interpSnake.length; i++) {
-    const pt = interpSnake[i];
-    ctx.lineTo(pt.x * cellSize + cellSize / 2, pt.y * cellSize + cellSize / 2);
-  }
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = snakeThickness;
-
-  if (snakeColor === 'rainbow') {
-    ctx.strokeStyle = `hsl(${(timestamp * 0.06) % 360}, 90%, 55%)`;
-  } else {
-    ctx.strokeStyle = theme.head; // Vibrant Google Blue
-  }
-  ctx.stroke();
-
-  // 3. Head Cap
-  const hx = first.x * cellSize + cellSize / 2;
-  const hy = first.y * cellSize + cellSize / 2;
   const headRadius = snakeThickness / 2;
 
+  ctx.save();
+
+  // 1. Draw continuous body tube with soft grass drop shadow
+  if (points.length >= 2) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.16)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = snakeThickness;
+
+    if (snakeColor === 'rainbow') {
+      ctx.strokeStyle = `hsl(${(timestamp * 0.06) % 360}, 90%, 55%)`;
+    } else {
+      ctx.strokeStyle = theme.head; // Vibrant Google Blue
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 2. Head Cap
   ctx.fillStyle = snakeColor === 'rainbow' ? `hsl(${(timestamp * 0.06) % 360}, 90%, 55%)` : theme.head;
   ctx.beginPath();
   ctx.arc(hx, hy, headRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  // 4. Smooth Turn Angle Interpolation
-  // Smoothly rotate head and eyes when changing direction
+  // 3. Smooth Turn Angle Interpolation (smoothstep for lifelike turning head)
   const getDirAngle = (dir: Direction) => {
     switch (dir) {
       case 'RIGHT': return 0;
@@ -395,7 +414,10 @@ function drawGoogleSnakeWithBigEyes(
   let diff = targetAngle - pastAngle;
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
-  const currentAngle = pastAngle + diff * progress;
+
+  // Smoothstep easing for angle turn
+  const angleT = progress * progress * (3 - 2 * progress);
+  const currentAngle = pastAngle + diff * angleT;
 
   // 5. Snake Tongue (Flicks out periodically)
   const tongueProgress = (timestamp % 1600) / 1600;
